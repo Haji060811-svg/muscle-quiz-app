@@ -32,6 +32,11 @@
   header{padding:14px 4px 10px;}
   header h1{font-size:19px;margin:0 0 4px;font-weight:700;}
   header p{margin:0;font-size:12.5px;color:var(--sub);}
+  .modebar{display:flex;gap:6px;margin:14px 0 4px;}
+  .dp-wrap{margin:2px 0 12px;}
+  .dp-bar{height:8px;background:#eee2d0;border-radius:999px;overflow:hidden;}
+  .dp-fill{height:100%;background:var(--accent);border-radius:999px;transition:width .3s;}
+  .dp-label{font-size:11px;color:var(--sub);margin-top:4px;text-align:center;}
   .stats{display:flex;gap:8px;margin:12px 0 4px;}
   .stat{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 8px;text-align:center;}
   .stat b{display:block;font-size:20px;color:var(--accent-dark);}
@@ -45,8 +50,10 @@
   .qmeta{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
   .qtag{font-size:11px;background:#efe6d8;color:var(--accent-dark);padding:3px 9px;border-radius:999px;font-weight:600;}
   .qnum{font-size:11px;color:var(--sub);}
-  .qtitle{font-size:16px;line-height:1.6;font-weight:600;margin:6px 0 14px;}
+  .diagram{text-align:center;}
+  .qtitle{font-size:16px;line-height:1.6;font-weight:600;margin:6px 0 14px;text-align:center;}
   .qtitle .muscle{color:var(--accent-dark);}
+  .qtitle b{color:var(--accent-dark);}
   .opt{display:block;width:100%;text-align:left;background:#fbf9f5;border:1.5px solid var(--border);
     border-radius:12px;padding:12px 14px;margin-bottom:9px;font-size:14.5px;line-height:1.5;color:var(--ink);
     -webkit-appearance:none;appearance:none;cursor:pointer;}
@@ -63,9 +70,9 @@
   .nextbtn{display:none;width:100%;padding:14px;margin-top:14px;border:none;border-radius:12px;
     background:var(--accent);color:#fff;font-size:15px;font-weight:700;cursor:pointer;}
   .nextbtn.show{display:block;}
-  .actionrow{display:flex;gap:8px;margin-top:6px;}
+  .actionrow{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;}
   .smallbtn{flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--card);
-    font-size:12.5px;color:var(--sub);text-align:center;cursor:pointer;}
+    font-size:12.5px;color:var(--sub);text-align:center;cursor:pointer;min-width:90px;}
   footer{text-align:center;padding:20px 0 30px;font-size:11px;color:var(--sub);}
 </style>
 </head>
@@ -73,8 +80,12 @@
 <div class="wrap">
   <header>
     <h1>筋肉クイズ 〜起始・停止・作用〜</h1>
-    <p>4択形式で筋肉の起始・停止をまとめて確認。全47筋(頸部・肩甲帯・上腕・前腕・体幹・股関節/大腿・下腿)・部位別に出題されます。</p>
+    <p>「今日の10問」「自由演習」「暗記カード」の3モードで、全47筋の起始・停止・作用を色んな角度から復習できます。間違えた筋肉・見た回数が少ない筋肉ほど優先的に出題されます。</p>
   </header>
+
+  <div class="modebar" id="modeBar"></div>
+
+  <div class="dp-wrap" id="dailyProgress"></div>
 
   <div class="stats">
     <div class="stat"><b id="statTotal">0</b><span>解答数</span></div>
@@ -89,8 +100,10 @@
       <span class="qtag" id="qRegion">部位</span>
       <span class="qnum" id="qCount">Q1</span>
     </div>
+    <div class="diagram" id="diagramBox"></div>
     <div class="qtitle" id="qTitle">読み込み中...</div>
     <div id="optionsBox"></div>
+    <div id="flashBox" style="display:none;"></div>
     <div class="explain" id="explainBox"></div>
     <button class="nextbtn" id="nextBtn">次の問題へ</button>
   </div>
@@ -98,6 +111,7 @@
   <div class="actionrow">
     <div class="smallbtn" id="resetBtn">成績をリセット</div>
     <div class="smallbtn" id="reviewBtn">間違えた筋肉を見る</div>
+    <div class="smallbtn" id="notifyBtn">🔕 リマインダー設定</div>
   </div>
 
   <footer>阿部はじめ さんの学習用 &middot; ローカル保存のみ(サーバー送信なし)</footer>
@@ -219,30 +233,74 @@ const MUSCLES = [
 const REGIONS = ["すべて", ...Array.from(new Set(MUSCLES.map(m=>m.region)))];
 
 // ---------- 状態管理(localStorage) ----------
-const STORAGE_KEY = "muscle_quiz_state_v1";
+const STORAGE_KEY = "muscle_quiz_state_v2";
 function loadState(){
+  let s;
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw) return JSON.parse(raw);
+    if(raw) s = JSON.parse(raw);
   }catch(e){}
-  return {total:0, correct:0, wrongMuscles:{}, recent:[]};
+  if(!s){
+    // v1(PWA化以前)のデータがあれば引き継ぐ
+    try{
+      const old = localStorage.getItem("muscle_quiz_state_v1");
+      if(old) s = JSON.parse(old);
+    }catch(e){}
+  }
+  if(!s) s = {};
+  return Object.assign({
+    total:0, correct:0, wrongMuscles:{}, recent:[],
+    mastery:{}, daily:null, notifyEnabled:false, lastMode:"daily"
+  }, s);
 }
 function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 let state = loadState();
 let currentRegion = "すべて";
+let currentMode = state.lastMode || "daily";
 let currentQ = null;
+let currentFlash = null;
 
 // ---------- UI要素 ----------
+const modeBar = document.getElementById("modeBar");
+const dailyProgress = document.getElementById("dailyProgress");
 const regionBar = document.getElementById("regionBar");
 const qRegion = document.getElementById("qRegion");
 const qCount = document.getElementById("qCount");
+const diagramBox = document.getElementById("diagramBox");
 const qTitle = document.getElementById("qTitle");
 const optionsBox = document.getElementById("optionsBox");
+const flashBox = document.getElementById("flashBox");
 const explainBox = document.getElementById("explainBox");
 const nextBtn = document.getElementById("nextBtn");
 const statTotal = document.getElementById("statTotal");
 const statCorrect = document.getElementById("statCorrect");
 const statRate = document.getElementById("statRate");
+const notifyBtn = document.getElementById("notifyBtn");
+
+// ---------- モード ----------
+const MODES = [
+  {id:"daily", label:"今日の10問"},
+  {id:"free", label:"自由演習"},
+  {id:"flash", label:"暗記カード"}
+];
+
+function renderModeBar(){
+  modeBar.innerHTML = "";
+  MODES.forEach(md=>{
+    const chip = document.createElement("div");
+    chip.className = "region-chip" + (currentMode===md.id ? " active":"");
+    chip.textContent = md.label;
+    chip.onclick = ()=>{
+      currentMode = md.id;
+      state.lastMode = md.id;
+      saveState();
+      renderModeBar();
+      regionBar.style.display = currentMode==="daily" ? "none" : "flex";
+      startFlow();
+    };
+    modeBar.appendChild(chip);
+  });
+}
 
 function renderRegionBar(){
   regionBar.innerHTML = "";
@@ -250,7 +308,7 @@ function renderRegionBar(){
     const chip = document.createElement("div");
     chip.className = "region-chip" + (r===currentRegion?" active":"");
     chip.textContent = r;
-    chip.onclick = ()=>{ currentRegion = r; renderRegionBar(); nextQuestion(); };
+    chip.onclick = ()=>{ currentRegion = r; renderRegionBar(); startFlow(); };
     regionBar.appendChild(chip);
   });
 }
@@ -261,14 +319,68 @@ function renderStats(){
   statRate.textContent = state.total ? Math.round(state.correct/state.total*100)+"%" : "0%";
 }
 
-function pickMuscle(){
-  const pool = currentRegion==="すべて" ? MUSCLES : MUSCLES.filter(m=>m.region===currentRegion);
-  const recentNames = state.recent.slice(-4);
-  let candidates = pool.filter(m=>!recentNames.includes(m.name));
-  if(candidates.length===0) candidates = pool;
-  return candidates[Math.floor(Math.random()*candidates.length)];
+// ---------- 体の部位図(簡易シルエット) ----------
+const REGION_ZONES = {
+  "頸部": ["neck"],
+  "肩": ["shoulder"],
+  "体幹": ["torso"],
+  "上腕": ["upperarmL","upperarmR"],
+  "前腕": ["forearmL","forearmR"],
+  "股関節・大腿": ["thighL","thighR"],
+  "下腿・足": ["lowerlegL","lowerlegR","footL","footR"]
+};
+function bodyDiagramSVG(region){
+  const active = new Set(REGION_ZONES[region] || []);
+  const on = "#b5602b";
+  const off = "#e4ddd0";
+  const c = id => active.has(id) ? on : off;
+  return `
+  <svg viewBox="0 0 160 300" width="88" height="165" aria-label="部位図(簡易)">
+    <circle cx="80" cy="22" r="16" fill="#d8cfc0"/>
+    <rect x="70" y="36" width="20" height="16" rx="4" fill="${c('neck')}"/>
+    <rect x="45" y="50" width="70" height="14" rx="6" fill="${c('shoulder')}"/>
+    <rect x="50" y="62" width="60" height="86" rx="10" fill="${c('torso')}"/>
+    <rect x="26" y="60" width="18" height="50" rx="8" fill="${c('upperarmL')}"/>
+    <rect x="116" y="60" width="18" height="50" rx="8" fill="${c('upperarmR')}"/>
+    <rect x="22" y="108" width="16" height="46" rx="7" fill="${c('forearmL')}"/>
+    <rect x="122" y="108" width="16" height="46" rx="7" fill="${c('forearmR')}"/>
+    <rect x="55" y="146" width="24" height="66" rx="10" fill="${c('thighL')}"/>
+    <rect x="81" y="146" width="24" height="66" rx="10" fill="${c('thighR')}"/>
+    <rect x="57" y="212" width="20" height="66" rx="8" fill="${c('lowerlegL')}"/>
+    <rect x="83" y="212" width="20" height="66" rx="8" fill="${c('lowerlegR')}"/>
+    <rect x="55" y="278" width="24" height="12" rx="5" fill="${c('footL')}"/>
+    <rect x="81" y="278" width="24" height="12" rx="5" fill="${c('footR')}"/>
+  </svg>`;
 }
 
+// ---------- 習熟度(簡易間隔反復) ----------
+function updateMastery(name, isCorrect){
+  if(!state.mastery[name]) state.mastery[name] = {box:0, wrong:0, seen:0};
+  const ms = state.mastery[name];
+  ms.seen++;
+  if(isCorrect) ms.box = Math.min(4, ms.box+1);
+  else { ms.box = 0; ms.wrong++; }
+}
+function weightFor(m){
+  const ms = state.mastery[m.name] || {box:0, wrong:0, seen:0};
+  const boxWeight = (4 - ms.box) + 1;      // box0→5, box4→1
+  const wrongWeight = ms.wrong * 1.5;      // 間違いが多いほど出やすい
+  const unseenBonus = ms.seen===0 ? 3 : 0; // 未出題を優先
+  return Math.max(0.5, boxWeight + wrongWeight + unseenBonus);
+}
+function pickWeighted(pool, excludeNames){
+  excludeNames = excludeNames || [];
+  let candidates = pool.filter(m=>!excludeNames.includes(m.name));
+  if(candidates.length===0) candidates = pool;
+  const weights = candidates.map(weightFor);
+  const total = weights.reduce((a,b)=>a+b,0);
+  let r = Math.random()*total;
+  for(let i=0;i<candidates.length;i++){
+    r -= weights[i];
+    if(r<=0) return candidates[i];
+  }
+  return candidates[candidates.length-1];
+}
 function shuffle(arr){
   const a = arr.slice();
   for(let i=a.length-1;i>0;i--){
@@ -277,45 +389,120 @@ function shuffle(arr){
   }
   return a;
 }
+function pickMuscle(){
+  const pool = currentRegion==="すべて" ? MUSCLES : MUSCLES.filter(m=>m.region===currentRegion);
+  const recentNames = state.recent.slice(-4);
+  return pickWeighted(pool, recentNames);
+}
 
-function buildOptions(target){
+// ---------- 今日の10問 ----------
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function ensureDaily(){
+  if(!state.daily || state.daily.date !== todayStr()){
+    const used = new Set();
+    const chosen = [];
+    while(chosen.length<10 && used.size<MUSCLES.length){
+      const m = pickWeighted(MUSCLES.filter(x=>!used.has(x.name)));
+      chosen.push(m.name);
+      used.add(m.name);
+    }
+    state.daily = {date: todayStr(), list: chosen, answered: [], notified: null};
+    saveState();
+  }
+}
+function renderDailyProgress(){
+  ensureDaily();
+  const done = state.daily.answered.length;
+  dailyProgress.innerHTML = `
+    <div class="dp-bar"><div class="dp-fill" style="width:${done/10*100}%"></div></div>
+    <div class="dp-label">今日の10問: ${done}/10 完了</div>`;
+}
+
+// ---------- 出題(4択・出題形式をランダム化) ----------
+function buildQuestion(target){
+  const types = ["combo","origin","insertion","action","name"];
+  const type = types[Math.floor(Math.random()*types.length)];
+  const pool = MUSCLES.filter(m=>m.name!==target.name);
+
+  function uniqueDistractors(getField, n){
+    const correct = getField(target);
+    const vals = new Set();
+    for(const m of shuffle(pool)){
+      const v = getField(m);
+      if(v!==correct) vals.add(v);
+      if(vals.size>=n) break;
+    }
+    return Array.from(vals);
+  }
+
+  if(type==="origin"){
+    const correctText = target.origin;
+    const options = shuffle([correctText, ...uniqueDistractors(m=>m.origin, 3)]);
+    return {promptHTML:`<span class="muscle">${target.name}</span> の<b>起始</b>はどれ？`, options, correctText};
+  }
+  if(type==="insertion"){
+    const correctText = target.insertion;
+    const options = shuffle([correctText, ...uniqueDistractors(m=>m.insertion, 3)]);
+    return {promptHTML:`<span class="muscle">${target.name}</span> の<b>停止</b>はどれ？`, options, correctText};
+  }
+  if(type==="action"){
+    const correctText = target.action;
+    const options = shuffle([correctText, ...uniqueDistractors(m=>m.action, 3)]);
+    return {promptHTML:`<span class="muscle">${target.name}</span> の<b>作用</b>はどれ？`, options, correctText};
+  }
+  if(type==="name"){
+    const correctText = target.name;
+    const distractors = shuffle(pool).slice(0,3).map(m=>m.name);
+    return {promptHTML:`起始「${target.origin}」・停止「${target.insertion}」を持つ筋肉は？`, options: shuffle([correctText, ...distractors]), correctText};
+  }
+  // combo(起始・停止セット、デフォルト)
   const correctText = `${target.origin} → ${target.insertion}`;
-  const others = shuffle(MUSCLES.filter(m=>m.name!==target.name)).slice(0,6);
+  const others = shuffle(pool).slice(0,6);
   const wrongSet = new Set();
   let i=0;
   while(wrongSet.size<3 && i<others.length){
-    const o = others[i];
-    const j = (i+1)%others.length;
-    const insMuscle = others[j] || o;
-    const text = `${o.origin} → ${insMuscle.insertion}`;
+    const o = others[i]; const j=(i+1)%others.length; const insM = others[j]||o;
+    const text = `${o.origin} → ${insM.insertion}`;
     if(text!==correctText) wrongSet.add(text);
     i++;
   }
-  // 足りなければ単純に他の筋肉の正しい組み合わせをそのまま誤答として使う
   let k=0;
   while(wrongSet.size<3 && k<others.length){
-    const o = others[k];
-    const text = `${o.origin} → ${o.insertion}`;
+    const o=others[k]; const text = `${o.origin} → ${o.insertion}`;
     if(text!==correctText) wrongSet.add(text);
     k++;
   }
-  const options = shuffle([correctText, ...Array.from(wrongSet)]);
-  return {options, correctText};
+  return {promptHTML:`<span class="muscle">${target.name}</span> の起始・停止の組み合わせとして正しいものは？`, options: shuffle([correctText, ...Array.from(wrongSet)]), correctText};
 }
 
 function nextQuestion(){
   explainBox.classList.remove("show");
   nextBtn.classList.remove("show");
-  const target = pickMuscle();
-  const {options, correctText} = buildOptions(target);
-  currentQ = {target, options, correctText, answered:false};
+
+  let target;
+  if(currentMode==="daily"){
+    ensureDaily();
+    const remaining = state.daily.list.filter(n=>!state.daily.answered.includes(n));
+    if(remaining.length===0){ showDailyComplete(); return; }
+    const name = remaining[Math.floor(Math.random()*remaining.length)];
+    target = MUSCLES.find(m=>m.name===name);
+  } else {
+    target = pickMuscle();
+  }
+
+  const q = buildQuestion(target);
+  currentQ = {target, options:q.options, correctText:q.correctText, answered:false};
 
   qRegion.textContent = target.region;
-  qCount.textContent = `解答数 ${state.total}`;
-  qTitle.innerHTML = `<span class="muscle">${target.name}</span> の起始・停止の組み合わせとして正しいものは？`;
+  qCount.textContent = currentMode==="daily" ? `今日 ${state.daily.answered.length+1}/10` : `解答数 ${state.total}`;
+  diagramBox.innerHTML = bodyDiagramSVG(target.region);
+  qTitle.innerHTML = q.promptHTML;
 
   optionsBox.innerHTML = "";
-  options.forEach(optText=>{
+  q.options.forEach(optText=>{
     const btn = document.createElement("button");
     btn.className = "opt";
     btn.textContent = optText;
@@ -324,21 +511,35 @@ function nextQuestion(){
   });
 }
 
+function showDailyComplete(){
+  qRegion.textContent = "今日の分";
+  qCount.textContent = "10/10";
+  diagramBox.innerHTML = "";
+  qTitle.innerHTML = "🎉 今日の10問は完了です！";
+  optionsBox.innerHTML = "";
+  explainBox.innerHTML = "<div>お疲れさまでした。明日また新しい10問が出題されます。もっと練習したい場合は「自由演習」か「暗記カード」タブへどうぞ。</div>";
+  explainBox.classList.add("show");
+  nextBtn.classList.remove("show");
+}
+
 function selectOption(btn, text){
   if(currentQ.answered) return;
   currentQ.answered = true;
   const isCorrect = text===currentQ.correctText;
+  const name = currentQ.target.name;
 
   state.total++;
   if(isCorrect) state.correct++;
-  else{
-    const nm = currentQ.target.name;
-    state.wrongMuscles[nm] = (state.wrongMuscles[nm]||0)+1;
-  }
-  state.recent.push(currentQ.target.name);
+  else state.wrongMuscles[name] = (state.wrongMuscles[name]||0)+1;
+  state.recent.push(name);
   if(state.recent.length>10) state.recent.shift();
+  updateMastery(name, isCorrect);
+  if(currentMode==="daily" && !state.daily.answered.includes(name)){
+    state.daily.answered.push(name);
+  }
   saveState();
   renderStats();
+  if(currentMode==="daily") renderDailyProgress();
 
   Array.from(optionsBox.children).forEach(el=>{
     el.classList.add("disabled");
@@ -347,8 +548,8 @@ function selectOption(btn, text){
   });
 
   explainBox.innerHTML = `
-    <div><b>${isCorrect?"正解！":"不正解"}</b> ー ${currentQ.target.name}</div>
-    <div style="margin-top:6px;">起始・停止: ${currentQ.correctText}</div>
+    <div><b>${isCorrect?"正解！":"不正解"}</b> ー ${name}</div>
+    <div style="margin-top:6px;">起始・停止: ${currentQ.target.origin} → ${currentQ.target.insertion}</div>
     <div style="margin-top:4px;">作用: ${currentQ.target.action}</div>
     <div class="hint">覚え方のヒント: ${currentQ.target.hint}</div>
   `;
@@ -358,12 +559,79 @@ function selectOption(btn, text){
 
 nextBtn.onclick = nextQuestion;
 
+// ---------- 暗記カードモード ----------
+function nextFlashcard(){
+  const pool = currentRegion==="すべて" ? MUSCLES : MUSCLES.filter(m=>m.region===currentRegion);
+  const recentNames = state.recent.slice(-4);
+  const target = pickWeighted(pool, recentNames);
+  currentFlash = {target, revealed:false};
+  renderFlashcard();
+}
+function renderFlashcard(){
+  explainBox.classList.remove("show");
+  nextBtn.classList.remove("show");
+  const t = currentFlash.target;
+  qRegion.textContent = t.region;
+  qCount.textContent = "暗記カード";
+  diagramBox.innerHTML = bodyDiagramSVG(t.region);
+
+  if(!currentFlash.revealed){
+    qTitle.innerHTML = `<span class="muscle">${t.name}</span><br>起始・停止・作用を思い出してみましょう`;
+    flashBox.innerHTML = `<button class="nextbtn show" id="revealBtn">答えを見る</button>`;
+    document.getElementById("revealBtn").onclick = ()=>{ currentFlash.revealed = true; renderFlashcard(); };
+  } else {
+    qTitle.innerHTML = `<span class="muscle">${t.name}</span>`;
+    flashBox.innerHTML = `
+      <div class="explain show" style="margin-top:0;">
+        <div>起始: ${t.origin}</div>
+        <div style="margin-top:4px;">停止: ${t.insertion}</div>
+        <div style="margin-top:4px;">作用: ${t.action}</div>
+        <div class="hint">覚え方のヒント: ${t.hint}</div>
+      </div>
+      <div class="actionrow" style="margin-top:12px;">
+        <div class="smallbtn" id="flashBad" style="background:#faeae7;border-color:var(--bad);color:#8a2a1c;">まだ苦手</div>
+        <div class="smallbtn" id="flashGood" style="background:#e9f4ea;border-color:var(--good);color:#245830;">覚えた</div>
+      </div>`;
+    document.getElementById("flashGood").onclick = ()=>rateFlash(true);
+    document.getElementById("flashBad").onclick = ()=>rateFlash(false);
+  }
+}
+function rateFlash(isGood){
+  const name = currentFlash.target.name;
+  state.total++;
+  if(isGood) state.correct++;
+  else state.wrongMuscles[name] = (state.wrongMuscles[name]||0)+1;
+  state.recent.push(name);
+  if(state.recent.length>10) state.recent.shift();
+  updateMastery(name, isGood);
+  saveState();
+  renderStats();
+  nextFlashcard();
+}
+
+// ---------- モード切り替えの入口 ----------
+function startFlow(){
+  if(currentMode==="flash"){
+    optionsBox.style.display = "none";
+    flashBox.style.display = "block";
+    nextFlashcard();
+  } else {
+    flashBox.style.display = "none";
+    optionsBox.style.display = "block";
+    explainBox.classList.remove("show");
+    nextBtn.classList.remove("show");
+    nextQuestion();
+  }
+}
+
+// ---------- リセット・復習 ----------
 document.getElementById("resetBtn").onclick = ()=>{
-  if(confirm("成績と間違えた記録をリセットしますか？")){
-    state = {total:0, correct:0, wrongMuscles:{}, recent:[]};
+  if(confirm("成績・間違えた記録・習熟度をすべてリセットしますか？")){
+    state = {total:0, correct:0, wrongMuscles:{}, recent:[], mastery:{}, daily:null, notifyEnabled: state.notifyEnabled, lastMode: currentMode};
     saveState();
     renderStats();
-    nextQuestion();
+    renderDailyProgress();
+    startFlow();
   }
 };
 
@@ -373,14 +641,63 @@ document.getElementById("reviewBtn").onclick = ()=>{
     alert("まだ間違えた筋肉はありません。");
     return;
   }
-  const msg = entries.map(([name,count])=>`${name}: ${count}回`).join("\n");
+  const msg = entries.map(([name,count])=>{
+    const box = state.mastery[name] ? state.mastery[name].box : 0;
+    return `${name}: 間違い${count}回(習熟度 ${box}/4)`;
+  }).join("\n");
   alert("間違えた回数が多い筋肉:\n\n"+msg);
 };
 
+// ---------- リマインダー(アプリ内通知。閉じている間の自動配信ではありません) ----------
+function renderNotifyBtn(){
+  notifyBtn.textContent = state.notifyEnabled ? "🔔 リマインダーON" : "🔕 リマインダー設定";
+}
+notifyBtn.onclick = async ()=>{
+  if(!("Notification" in window)){
+    alert("このブラウザ・端末は通知に対応していません。");
+    return;
+  }
+  if(!state.notifyEnabled){
+    const perm = await Notification.requestPermission();
+    if(perm==="granted"){
+      state.notifyEnabled = true;
+      saveState();
+      alert("リマインダーをONにしました。アプリを開いたときに今日の10問が未完了なら通知します(アプリを閉じている間に自動で届くものではありません)。");
+    } else {
+      alert("通知が許可されませんでした。");
+    }
+  } else {
+    state.notifyEnabled = false;
+    saveState();
+  }
+  renderNotifyBtn();
+};
+function maybeShowDailyReminder(){
+  if(!state.notifyEnabled) return;
+  if(!("Notification" in window) || Notification.permission!=="granted") return;
+  ensureDaily();
+  if(state.daily.answered.length>=10) return;
+  if(state.daily.notified===todayStr()) return;
+  try{
+    new Notification("筋肉クイズ", {
+      body:`今日の10問、残り${10-state.daily.answered.length}問です`,
+      icon:"icons/icon-192.png"
+    });
+  }catch(e){}
+  state.daily.notified = todayStr();
+  saveState();
+}
+
 // ---------- 初期化 ----------
+renderModeBar();
 renderRegionBar();
+regionBar.style.display = currentMode==="daily" ? "none" : "flex";
 renderStats();
-nextQuestion();
+ensureDaily();
+renderDailyProgress();
+renderNotifyBtn();
+startFlow();
+maybeShowDailyReminder();
 
 // ---------- PWA: Service Worker登録 ----------
 if("serviceWorker" in navigator){
