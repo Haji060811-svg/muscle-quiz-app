@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>筋肉クイズ 〜起始・停止・作用〜</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#b5602b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="筋肉クイズ">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<style>
+  :root{
+    --bg:#f4f1ea;
+    --card:#ffffff;
+    --ink:#2b2620;
+    --sub:#7a7267;
+    --accent:#b5602b;
+    --accent-dark:#8f4a20;
+    --good:#3e7a4c;
+    --bad:#b5382b;
+    --border:#e4ddd0;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;}
+  body{min-height:100vh;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0;}
+  .wrap{max-width:520px;margin:0 auto;padding:16px;}
+  header{padding:14px 4px 10px;}
+  header h1{font-size:19px;margin:0 0 4px;font-weight:700;}
+  header p{margin:0;font-size:12.5px;color:var(--sub);}
+  .stats{display:flex;gap:8px;margin:12px 0 4px;}
+  .stat{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 8px;text-align:center;}
+  .stat b{display:block;font-size:20px;color:var(--accent-dark);}
+  .stat span{font-size:11px;color:var(--sub);}
+  .region-bar{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0;}
+  .region-chip{font-size:11.5px;padding:5px 10px;border-radius:999px;background:var(--card);
+    border:1px solid var(--border);color:var(--sub);cursor:pointer;user-select:none;}
+  .region-chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 16px;
+    box-shadow:0 2px 10px rgba(60,40,20,0.05);margin-bottom:14px;}
+  .qmeta{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .qtag{font-size:11px;background:#efe6d8;color:var(--accent-dark);padding:3px 9px;border-radius:999px;font-weight:600;}
+  .qnum{font-size:11px;color:var(--sub);}
+  .qtitle{font-size:16px;line-height:1.6;font-weight:600;margin:6px 0 14px;}
+  .qtitle .muscle{color:var(--accent-dark);}
+  .opt{display:block;width:100%;text-align:left;background:#fbf9f5;border:1.5px solid var(--border);
+    border-radius:12px;padding:12px 14px;margin-bottom:9px;font-size:14.5px;line-height:1.5;color:var(--ink);
+    -webkit-appearance:none;appearance:none;cursor:pointer;}
+  .opt:active{transform:scale(0.99);}
+  .opt.correct{background:#e9f4ea;border-color:var(--good);color:#245830;font-weight:600;}
+  .opt.wrong{background:#faeae7;border-color:var(--bad);color:#8a2a1c;font-weight:600;}
+  .opt.disabled{pointer-events:none;opacity:0.55;}
+  .opt.disabled.correct,.opt.disabled.wrong{opacity:1;}
+  .explain{display:none;margin-top:14px;padding:14px;background:#fbf6ea;border:1px solid #ecd9b3;
+    border-radius:12px;font-size:13.5px;line-height:1.7;}
+  .explain.show{display:block;}
+  .explain b{color:var(--accent-dark);}
+  .explain .hint{margin-top:8px;padding-top:8px;border-top:1px dashed #e0c98f;color:#7a6a3f;}
+  .nextbtn{display:none;width:100%;padding:14px;margin-top:14px;border:none;border-radius:12px;
+    background:var(--accent);color:#fff;font-size:15px;font-weight:700;cursor:pointer;}
+  .nextbtn.show{display:block;}
+  .actionrow{display:flex;gap:8px;margin-top:6px;}
+  .smallbtn{flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--card);
+    font-size:12.5px;color:var(--sub);text-align:center;cursor:pointer;}
+  footer{text-align:center;padding:20px 0 30px;font-size:11px;color:var(--sub);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>筋肉クイズ 〜起始・停止・作用〜</h1>
+    <p>4択形式で筋肉の起始・停止をまとめて確認。全47筋(頸部・肩甲帯・上腕・前腕・体幹・股関節/大腿・下腿)・部位別に出題されます。</p>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><b id="statTotal">0</b><span>解答数</span></div>
+    <div class="stat"><b id="statCorrect">0</b><span>正解数</span></div>
+    <div class="stat"><b id="statRate">0%</b><span>正答率</span></div>
+  </div>
+
+  <div class="region-bar" id="regionBar"></div>
+
+  <div class="card" id="quizCard">
+    <div class="qmeta">
+      <span class="qtag" id="qRegion">部位</span>
+      <span class="qnum" id="qCount">Q1</span>
+    </div>
+    <div class="qtitle" id="qTitle">読み込み中...</div>
+    <div id="optionsBox"></div>
+    <div class="explain" id="explainBox"></div>
+    <button class="nextbtn" id="nextBtn">次の問題へ</button>
+  </div>
+
+  <div class="actionrow">
+    <div class="smallbtn" id="resetBtn">成績をリセット</div>
+    <div class="smallbtn" id="reviewBtn">間違えた筋肉を見る</div>
+  </div>
+
+  <footer>阿部はじめ さんの学習用 &middot; ローカル保存のみ(サーバー送信なし)</footer>
+</div>
+
+<script>
+// ---------- 筋肉データ ----------
+// origin / insertion は短い名詞句で統一(選択肢の自動生成に使うため)
+const MUSCLES = [
+  // 肩甲帯・肩
+  {name:"三角筋", region:"肩", origin:"鎖骨外側1/3・肩峰・肩甲棘", insertion:"上腕骨三角筋粗面",
+   action:"肩関節の外転(全体)、屈曲(前部)、伸展(後部)", hint:"肩をぐるっと覆う三角のカバー筋。前・中・後で働きが変わる。"},
+  {name:"僧帽筋", region:"肩", origin:"後頭骨・全頸椎・全胸椎の棘突起", insertion:"鎖骨外側1/3・肩峰・肩甲棘",
+   action:"肩甲骨の挙上(上部)・内転(中部)・下制と下方回旋(下部)", hint:"背中の僧侶の頭巾(僧帽)のような形。上中下で肩甲骨の動きが変わる。"},
+  {name:"広背筋", region:"肩", origin:"下位胸椎・腰椎棘突起(胸腰筋膜)・腸骨稜・下位肋骨", insertion:"上腕骨小結節稜",
+   action:"肩関節の伸展・内転・内旋", hint:"背中の逆三角形の主役。懸垂やラットプルダウンで使う筋。"},
+  {name:"大胸筋", region:"肩", origin:"鎖骨内側部(鎖骨頭)・胸骨と肋軟骨(胸肋頭)・腹直筋鞘(腹部頭)", insertion:"上腕骨大結節稜",
+   action:"肩関節の内転・内旋・水平屈曲(鎖骨頭は屈曲にも関与)", hint:"3つの頭が扇状に集まって上腕骨に停止するイメージ。"},
+  {name:"前鋸筋", region:"肩", origin:"第1〜9肋骨外側面", insertion:"肩甲骨内側縁(肋骨面)",
+   action:"肩甲骨の外転(前方突出)・上方回旋", hint:"ノコギリ(鋸)状に肋骨から起こる。パンチ動作の要。"},
+  {name:"菱形筋", region:"肩", origin:"下位頸椎・上位胸椎棘突起", insertion:"肩甲骨内側縁",
+   action:"肩甲骨の内転(背骨側に寄せる)・下方回旋", hint:"ひし形(菱形)の名の通り左右対称に背骨と肩甲骨を結ぶ。"},
+  {name:"棘上筋", region:"肩", origin:"肩甲骨棘上窩", insertion:"上腕骨大結節上部",
+   action:"肩関節外転の開始(0〜15度)", hint:"ローテーターカフの一つ。腕を上げ始める最初の一押し。"},
+  {name:"棘下筋", region:"肩", origin:"肩甲骨棘下窩", insertion:"上腕骨大結節後部",
+   action:"肩関節の外旋", hint:"ローテーターカフ。棘の下にあるから棘下筋、外旋担当。"},
+  {name:"肩甲下筋", region:"肩", origin:"肩甲骨肩甲下窩(前面)", insertion:"上腕骨小結節",
+   action:"肩関節の内旋", hint:"肩甲骨の裏側(肋骨側)から起こる唯一の内旋筋。"},
+  {name:"小円筋", region:"肩", origin:"肩甲骨外側縁上部", insertion:"上腕骨大結節下部",
+   action:"肩関節の外旋(棘下筋を補助)", hint:"SITS(棘上筋・棘下筋・小円筋・肩甲下筋)の最後の一つ。棘下筋の下で同じ外旋方向。"},
+  {name:"大円筋", region:"肩", origin:"肩甲骨下角", insertion:"上腕骨小結節稜",
+   action:"肩関節の内転・内旋・伸展", hint:"「広背筋の小さな相棒」。停止部位も広背筋と同じ小結節稜。"},
+  {name:"肩甲挙筋", region:"肩", origin:"上位頸椎(C1〜C4)横突起", insertion:"肩甲骨上角",
+   action:"肩甲骨の挙上", hint:"名前の通り肩甲骨を挙げる筋。首こりで緊張しやすい筋としても有名。"},
+  {name:"小胸筋", region:"肩", origin:"第3〜5肋骨", insertion:"肩甲骨烏口突起",
+   action:"肩甲骨の下制・前傾(引き下げ)", hint:"大胸筋の深層にある小さい筋。肋骨から烏口突起へ斜めに走る。"},
+
+  // 頸部
+  {name:"胸鎖乳突筋", region:"頸部", origin:"胸骨柄・鎖骨内側端", insertion:"側頭骨乳様突起",
+   action:"頭部の回旋(反対側)、両側収縮で頭部の屈曲", hint:"胸骨・鎖骨・乳様突起を結ぶ筋。片側だけ縮むと首をかしげる。"},
+  {name:"斜角筋群(前・中・後斜角筋)", region:"頸部", origin:"頸椎横突起", insertion:"第1肋骨(前・中斜角筋)・第2肋骨(後斜角筋)",
+   action:"頸部の側屈、深吸気時の肋骨挙上(補助呼吸筋)", hint:"首の横から肋骨へ斜めに走る3本。深呼吸で肋骨を持ち上げる補助筋。"},
+
+  // 上腕
+  {name:"上腕二頭筋", region:"上腕", origin:"長頭:肩甲骨関節上結節／短頭:肩甲骨烏口突起", insertion:"橈骨粗面",
+   action:"肘関節の屈曲・前腕の回外", hint:"力こぶ。2つの頭は両方とも肩甲骨から始まる。"},
+  {name:"上腕三頭筋", region:"上腕", origin:"長頭:肩甲骨関節下結節／外側頭・内側頭:上腕骨後面", insertion:"尺骨肘頭",
+   action:"肘関節の伸展", hint:"3頭のうち長頭だけ肩甲骨から、残り2頭は上腕骨から。停止は共通で肘頭。"},
+  {name:"上腕筋", region:"上腕", origin:"上腕骨前面下半", insertion:"尺骨粗面",
+   action:"肘関節の屈曲(前腕の回旋位に関係なく働く)", hint:"力こぶの下に隠れた縁の下の力持ち、純粋な肘屈筋。"},
+  {name:"腕橈骨筋", region:"上腕", origin:"上腕骨外側顆上稜", insertion:"橈骨茎状突起",
+   action:"肘関節の屈曲", hint:"前腕の一番外側、ビール瓶を持ち上げる時に浮き出る筋。"},
+
+  // 前腕
+  {name:"円回内筋", region:"前腕", origin:"上腕骨内側上顆", insertion:"橈骨中央外側面",
+   action:"前腕の回内", hint:"「回内」の名の通り、前腕をひねって手のひらを下に向ける動き。"},
+  {name:"回外筋", region:"前腕", origin:"上腕骨外側上顆・尺骨近位", insertion:"橈骨近位外側面",
+   action:"前腕の回外", hint:"円回内筋の反対の動き。手のひらを上に向ける「回外」を担当。"},
+  {name:"手根屈筋群(橈側手根屈筋・尺側手根屈筋・長掌筋)", region:"前腕", origin:"上腕骨内側上顆(共通屈筋起始)", insertion:"各手根骨・中手骨底",
+   action:"手関節の掌屈", hint:"前腕内側の共通起始(内側上顆)から手首を曲げる筋がまとめて始まる。"},
+  {name:"手指伸筋群(総指伸筋など)", region:"前腕", origin:"上腕骨外側上顆(共通伸筋起始)", insertion:"指骨背側(伸筋腱膜)",
+   action:"手関節の背屈・手指の伸展", hint:"内側上顆(屈筋)の反対、外側上顆から始まる伸筋群。テニス肘はここの炎症。"},
+
+  // 体幹
+  {name:"腹直筋", region:"体幹", origin:"恥骨稜・恥骨結合", insertion:"剣状突起・第5〜7肋軟骨",
+   action:"体幹の屈曲(腹部を丸める)", hint:"いわゆる腹筋の縦ライン(シックスパック)。"},
+  {name:"外腹斜筋", region:"体幹", origin:"下位8肋骨外面", insertion:"腸骨稜・鼠径靱帯・腹直筋鞘(白線)",
+   action:"体幹の回旋(反対側)・側屈", hint:"ポケットに手を入れる方向の斜めの筋。表層にある。"},
+  {name:"内腹斜筋", region:"体幹", origin:"腸骨稜・鼠径靱帯・胸腰筋膜", insertion:"下位肋骨・腹直筋鞘",
+   action:"体幹の回旋(同側)・側屈", hint:"外腹斜筋の内側(深層)にあり、線維の向きは逆(八の字)。"},
+  {name:"脊柱起立筋", region:"体幹", origin:"仙骨・腸骨稜・椎骨棘突起", insertion:"肋骨・椎骨・後頭骨",
+   action:"脊柱の伸展(姿勢保持)", hint:"背骨に沿って縦に走る太いロープ状の筋群。姿勢を支える柱。"},
+  {name:"横隔膜", region:"体幹", origin:"胸骨・肋骨内面・腰椎(腰椎部)", insertion:"腱中心",
+   action:"収縮して下降することで胸腔を広げる(主動的な吸気筋)", hint:"唯一の主呼吸筋。ドーム状で収縮すると平らになり肺に空気が入る。"},
+  {name:"肋間筋(外肋間筋・内肋間筋)", region:"体幹", origin:"外肋間筋:上位肋骨下縁／内肋間筋:下位肋骨上縁", insertion:"外肋間筋:下位肋骨上縁／内肋間筋:上位肋骨下縁",
+   action:"外肋間筋は吸気(肋骨挙上)、内肋間筋は呼気(肋骨引き下げ)を補助", hint:"外はポケットに手を入れる向き、内はその逆。外=吸う、内=吐く、と覚える。"},
+  {name:"腰方形筋", region:"体幹", origin:"腸骨稜", insertion:"第12肋骨・上位腰椎横突起",
+   action:"体幹の側屈、骨盤の挙上、強い呼気の補助", hint:"腰の深層にある四角い筋。片側で縮むと骨盤を吊り上げる。"},
+
+  // 股関節・大腿
+  {name:"大殿筋", region:"股関節・大腿", origin:"腸骨翼後面・仙骨・尾骨", insertion:"腸脛靱帯・大腿骨殿筋粗面",
+   action:"股関節の伸展・外旋", hint:"お尻で一番大きい筋。階段を上る・立ち上がる動作の主役。"},
+  {name:"中殿筋", region:"股関節・大腿", origin:"腸骨翼外面", insertion:"大腿骨大転子",
+   action:"股関節の外転(片脚立ちで骨盤を安定させる)", hint:"大殿筋の深層・外側。片足立ちで骨盤が傾かないよう支える。"},
+  {name:"小殿筋", region:"股関節・大腿", origin:"腸骨翼外面(中殿筋の深層)", insertion:"大腿骨大転子",
+   action:"股関節の外転(中殿筋を補助)", hint:"中殿筋のさらに深層にある一番小さい殿筋。働きは中殿筋とほぼ同じ。"},
+  {name:"梨状筋", region:"股関節・大腿", origin:"仙骨前面", insertion:"大腿骨大転子上縁",
+   action:"股関節の外旋(屈曲位では外転にも関与)", hint:"洋梨のような形。すぐそばを坐骨神経が通り、坐骨神経痛の原因になることもある。"},
+  {name:"大腿筋膜張筋", region:"股関節・大腿", origin:"上前腸骨棘", insertion:"腸脛靱帯",
+   action:"股関節の屈曲・外転・内旋", hint:"股の前外側にあり、腸脛靱帯を張って膝の外側を安定させる。"},
+  {name:"腸腰筋", region:"股関節・大腿", origin:"大腰筋:腰椎椎体・肋骨突起／腸骨筋:腸骨窩", insertion:"大腿骨小転子",
+   action:"股関節の屈曲(代表的な股関節屈筋)", hint:"腰椎+腸骨→小転子。歩行で脚を振り出す主役。"},
+  {name:"内転筋群(長内転筋・短内転筋・大内転筋)", region:"股関節・大腿", origin:"恥骨・坐骨枝", insertion:"大腿骨内側の粗線(linea aspera)",
+   action:"股関節の内転", hint:"内もものグループ。恥骨側から大腿骨の内側ラインへ集まる。"},
+  {name:"大腿四頭筋(大腿直筋・内側広筋・外側広筋・中間広筋)", region:"股関節・大腿", origin:"大腿直筋:下前腸骨棘／広筋群:大腿骨骨幹", insertion:"膝蓋腱を介し脛骨粗面",
+   action:"膝関節の伸展(大腿直筋のみ股関節屈曲にも関与)", hint:"4頭のうち大腿直筋だけ骨盤から。全部まとめて膝蓋腱→脛骨粗面。"},
+  {name:"ハムストリングス(大腿二頭筋・半腱様筋・半膜様筋)", region:"股関節・大腿", origin:"坐骨結節(大腿二頭筋短頭のみ大腿骨後面)", insertion:"大腿二頭筋:腓骨頭／半腱様筋・半膜様筋:脛骨内側",
+   action:"膝関節の屈曲・股関節の伸展", hint:"太もも裏の3兄弟。坐骨結節から出て、外側は腓骨、内側は脛骨へ。"},
+  {name:"縫工筋", region:"股関節・大腿", origin:"上前腸骨棘", insertion:"脛骨内側(鵞足)",
+   action:"股関節の屈曲・外転・外旋、膝関節の屈曲", hint:"体の中で最も長い筋。あぐらをかく(縫い物をする)動きに使う。"},
+
+  // 下腿・足
+  {name:"下腿三頭筋(腓腹筋・ヒラメ筋)", region:"下腿・足", origin:"腓腹筋:大腿骨内側顆・外側顆／ヒラメ筋:脛骨・腓骨後面上部", insertion:"アキレス腱を介し踵骨隆起",
+   action:"足関節の底屈(腓腹筋は膝関節屈曲にも関与)", hint:"ふくらはぎ→アキレス腱→かかとの一本ライン。"},
+  {name:"前脛骨筋", region:"下腿・足", origin:"脛骨外側顆・骨幹前面", insertion:"内側楔状骨・第1中足骨底",
+   action:"足関節の背屈・内反", hint:"すねの外側から起こり、足の親指側(内側)に停止して持ち上げる。"},
+  {name:"長腓骨筋・短腓骨筋(腓骨筋群)", region:"下腿・足", origin:"腓骨外側面", insertion:"長腓骨筋:内側楔状骨・第1中足骨底／短腓骨筋:第5中足骨粗面",
+   action:"足関節の外反・底屈の補助", hint:"すねの外側(腓骨側)から起こり足の外側〜内側へ回り込む、外反担当。"},
+  {name:"後脛骨筋", region:"下腿・足", origin:"脛骨・腓骨後面(骨間膜)", insertion:"舟状骨・楔状骨",
+   action:"足関節の底屈・内反", hint:"前脛骨筋の裏側(後面)から起こり、土踏まずを支える筋。"},
+  {name:"長母指屈筋", region:"下腿・足", origin:"腓骨後面", insertion:"母指(足の親指)末節骨",
+   action:"母指の屈曲、足関節の底屈補助", hint:"ふくらはぎの深層から足の親指の先まで伸びる長い筋。"},
+  {name:"長趾伸筋", region:"下腿・足", origin:"脛骨外側顆・腓骨前面", insertion:"第2〜5趾の趾骨(背側)",
+   action:"足趾の伸展、足関節の背屈補助", hint:"前脛骨筋のすぐ外側にあり、足の指(親指以外)を持ち上げる。"},
+  {name:"膝窩筋", region:"下腿・足", origin:"大腿骨外側顆", insertion:"脛骨後面上部",
+   action:"膝関節の内旋、伸展位からのロック解除", hint:"膝の裏の小さな筋。「膝のロックを外す鍵」として知られる。"}
+];
+
+const REGIONS = ["すべて", ...Array.from(new Set(MUSCLES.map(m=>m.region)))];
+
+// ---------- 状態管理(localStorage) ----------
+const STORAGE_KEY = "muscle_quiz_state_v1";
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return {total:0, correct:0, wrongMuscles:{}, recent:[]};
+}
+function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+let state = loadState();
+let currentRegion = "すべて";
+let currentQ = null;
+
+// ---------- UI要素 ----------
+const regionBar = document.getElementById("regionBar");
+const qRegion = document.getElementById("qRegion");
+const qCount = document.getElementById("qCount");
+const qTitle = document.getElementById("qTitle");
+const optionsBox = document.getElementById("optionsBox");
+const explainBox = document.getElementById("explainBox");
+const nextBtn = document.getElementById("nextBtn");
+const statTotal = document.getElementById("statTotal");
+const statCorrect = document.getElementById("statCorrect");
+const statRate = document.getElementById("statRate");
+
+function renderRegionBar(){
+  regionBar.innerHTML = "";
+  REGIONS.forEach(r=>{
+    const chip = document.createElement("div");
+    chip.className = "region-chip" + (r===currentRegion?" active":"");
+    chip.textContent = r;
+    chip.onclick = ()=>{ currentRegion = r; renderRegionBar(); nextQuestion(); };
+    regionBar.appendChild(chip);
+  });
+}
+
+function renderStats(){
+  statTotal.textContent = state.total;
+  statCorrect.textContent = state.correct;
+  statRate.textContent = state.total ? Math.round(state.correct/state.total*100)+"%" : "0%";
+}
+
+function pickMuscle(){
+  const pool = currentRegion==="すべて" ? MUSCLES : MUSCLES.filter(m=>m.region===currentRegion);
+  const recentNames = state.recent.slice(-4);
+  let candidates = pool.filter(m=>!recentNames.includes(m.name));
+  if(candidates.length===0) candidates = pool;
+  return candidates[Math.floor(Math.random()*candidates.length)];
+}
+
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function buildOptions(target){
+  const correctText = `${target.origin} → ${target.insertion}`;
+  const others = shuffle(MUSCLES.filter(m=>m.name!==target.name)).slice(0,6);
+  const wrongSet = new Set();
+  let i=0;
+  while(wrongSet.size<3 && i<others.length){
+    const o = others[i];
+    const j = (i+1)%others.length;
+    const insMuscle = others[j] || o;
+    const text = `${o.origin} → ${insMuscle.insertion}`;
+    if(text!==correctText) wrongSet.add(text);
+    i++;
+  }
+  // 足りなければ単純に他の筋肉の正しい組み合わせをそのまま誤答として使う
+  let k=0;
+  while(wrongSet.size<3 && k<others.length){
+    const o = others[k];
+    const text = `${o.origin} → ${o.insertion}`;
+    if(text!==correctText) wrongSet.add(text);
+    k++;
+  }
+  const options = shuffle([correctText, ...Array.from(wrongSet)]);
+  return {options, correctText};
+}
+
+function nextQuestion(){
+  explainBox.classList.remove("show");
+  nextBtn.classList.remove("show");
+  const target = pickMuscle();
+  const {options, correctText} = buildOptions(target);
+  currentQ = {target, options, correctText, answered:false};
+
+  qRegion.textContent = target.region;
+  qCount.textContent = `解答数 ${state.total}`;
+  qTitle.innerHTML = `<span class="muscle">${target.name}</span> の起始・停止の組み合わせとして正しいものは？`;
+
+  optionsBox.innerHTML = "";
+  options.forEach(optText=>{
+    const btn = document.createElement("button");
+    btn.className = "opt";
+    btn.textContent = optText;
+    btn.onclick = ()=>selectOption(btn, optText);
+    optionsBox.appendChild(btn);
+  });
+}
+
+function selectOption(btn, text){
+  if(currentQ.answered) return;
+  currentQ.answered = true;
+  const isCorrect = text===currentQ.correctText;
+
+  state.total++;
+  if(isCorrect) state.correct++;
+  else{
+    const nm = currentQ.target.name;
+    state.wrongMuscles[nm] = (state.wrongMuscles[nm]||0)+1;
+  }
+  state.recent.push(currentQ.target.name);
+  if(state.recent.length>10) state.recent.shift();
+  saveState();
+  renderStats();
+
+  Array.from(optionsBox.children).forEach(el=>{
+    el.classList.add("disabled");
+    if(el.textContent===currentQ.correctText) el.classList.add("correct");
+    else if(el===btn) el.classList.add("wrong");
+  });
+
+  explainBox.innerHTML = `
+    <div><b>${isCorrect?"正解！":"不正解"}</b> ー ${currentQ.target.name}</div>
+    <div style="margin-top:6px;">起始・停止: ${currentQ.correctText}</div>
+    <div style="margin-top:4px;">作用: ${currentQ.target.action}</div>
+    <div class="hint">覚え方のヒント: ${currentQ.target.hint}</div>
+  `;
+  explainBox.classList.add("show");
+  nextBtn.classList.add("show");
+}
+
+nextBtn.onclick = nextQuestion;
+
+document.getElementById("resetBtn").onclick = ()=>{
+  if(confirm("成績と間違えた記録をリセットしますか？")){
+    state = {total:0, correct:0, wrongMuscles:{}, recent:[]};
+    saveState();
+    renderStats();
+    nextQuestion();
+  }
+};
+
+document.getElementById("reviewBtn").onclick = ()=>{
+  const entries = Object.entries(state.wrongMuscles).sort((a,b)=>b[1]-a[1]);
+  if(entries.length===0){
+    alert("まだ間違えた筋肉はありません。");
+    return;
+  }
+  const msg = entries.map(([name,count])=>`${name}: ${count}回`).join("\n");
+  alert("間違えた回数が多い筋肉:\n\n"+msg);
+};
+
+// ---------- 初期化 ----------
+renderRegionBar();
+renderStats();
+nextQuestion();
+
+// ---------- PWA: Service Worker登録 ----------
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
